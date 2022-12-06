@@ -30,42 +30,41 @@ using std::placeholders::_1;
 /* This example creates a subclass of Node and uses std::bind() to register a
  * member function as a callback from the timer. */
 
-class MinimalPublisher : public rclcpp::Node
+class ImageSubscriber : public rclcpp::Node
 {
 public:
-  MinimalPublisher()
+  ImageSubscriber()
   : Node("image_subscriber")
   {
     auto qos = rclcpp::QoS(rclcpp::KeepLast(1));
     qos = qos.best_effort();
     subscription_ = this->create_subscription<sensor_msgs::msg::CompressedImage>("rgb", qos,
-      std::bind(&MinimalPublisher::image_callback, this, _1));
+      std::bind(&ImageSubscriber::subscribe_image, this, _1));
     timer_ = this->create_wall_timer(std::chrono::milliseconds(1000),
-      std::bind(&MinimalPublisher::timer_callback, this));
+      std::bind(&ImageSubscriber::inspect_metrics, this));
   }
 
 private:
-  void image_callback(sensor_msgs::msg::CompressedImage::SharedPtr msg) {
-    m_msg_queue_.push_back(msg);
-    RCLCPP_INFO_STREAM(this->get_logger(), "  Received " << (int)msg->data.size() << "bytes image");
+  void subscribe_image(sensor_msgs::msg::CompressedImage::SharedPtr msg) {
+    (void)msg;
+    count_++;
+    RCLCPP_INFO_STREAM(this->get_logger(), "-- received images: " << count_);
   }
-  void timer_callback()
+  void inspect_metrics()
   {
-    int fps = m_msg_queue_.size();
-    m_msg_queue_.clear();
-    RCLCPP_INFO_STREAM(this->get_logger(), "FPS: " << fps);
-    
+    RCLCPP_INFO_STREAM(this->get_logger(), "FPS: " << count_);
+    count_ = 0;
   }
-  cv::Mat frame_;
+
   rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr subscription_;
   rclcpp::TimerBase::SharedPtr timer_;
-  std::deque<sensor_msgs::msg::CompressedImage::SharedPtr> m_msg_queue_;
+  int count_;
 };
 
 int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<MinimalPublisher>());
+  rclcpp::spin(std::make_shared<ImageSubscriber>());
   rclcpp::shutdown();
   return 0;
 }

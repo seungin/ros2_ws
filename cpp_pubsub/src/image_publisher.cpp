@@ -16,6 +16,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -29,39 +30,56 @@ using namespace std::chrono_literals;
 /* This example creates a subclass of Node and uses std::bind() to register a
  * member function as a callback from the timer. */
 
-class MinimalPublisher : public rclcpp::Node
+class ImagePublisher : public rclcpp::Node
 {
 public:
-  MinimalPublisher()
+  ImagePublisher()
   : Node("image_publisher")
   {
-    cap_.open(0);
-    publisher_ = this->create_publisher<sensor_msgs::msg::CompressedImage>("rgb", 1);
+    auto qos = rclcpp::QoS(rclcpp::KeepLast(1));
+    qos = qos.best_effort();
+    publisher_ = this->create_publisher<sensor_msgs::msg::CompressedImage>("rgb", qos);
+
+    {
+      int width = 1280;
+      int height = 720;
+      frame_.resize(width * height);
+      RCLCPP_INFO_STREAM(this->get_logger(), "Testing Frame Size: " << width << " * " << height << " = " << frame_.size() << " bytes.");
+    }
+    
     timer_ = this->create_wall_timer(
-      1ms, std::bind(&MinimalPublisher::timer_callback, this));
+      100ms, std::bind(&ImagePublisher::publish_image, this));
+    inspection_timer_ = this->create_wall_timer(
+      1000ms, std::bind(&ImagePublisher::inspect_metrics, this));
   }
 
 private:
-  void timer_callback()
+  void publish_image()
   {
-    cap_ >> frame_;
-    auto image = sensor_msgs::msg::CompressedImage();
-    image.format = "jpg";
-    cv::imencode(".jpg", frame_, image.data);
-    publisher_->publish(image);
-    cv::imshow("cam", frame_);
-    cv::waitKey(1);
+    auto msg = sensor_msgs::msg::CompressedImage();
+    msg.format = "jpg";
+    msg.data = frame_;
+    publisher_->publish(msg);
+    count_++;
   }
-  cv::VideoCapture cap_;
-  cv::Mat frame_;
+
+  void inspect_metrics()
+  {
+    RCLCPP_INFO_STREAM(this->get_logger(), "FPS: " << count_);
+    count_ = 0;
+  }
+
   rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::TimerBase::SharedPtr inspection_timer_;
   rclcpp::Publisher<sensor_msgs::msg::CompressedImage>::SharedPtr publisher_;
+  std::vector<uint8_t> frame_;
+  int count_;
 };
 
 int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<MinimalPublisher>());
+  rclcpp::spin(std::make_shared<ImagePublisher>());
   rclcpp::shutdown();
   return 0;
 }
